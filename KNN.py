@@ -1,4 +1,6 @@
 import numpy as np
+from tqdm import tqdm
+from scipy.spatial import distance
 
 def euclidian_distance(a, b):
     return np.sqrt(np.sum((a-b)**2, axis=1))
@@ -15,16 +17,24 @@ class KNN:
     def solve(self):
         matches = []
 
-        for i, desc in enumerate(self.descriptors_1):
+        distances = distance.cdist(self.descriptors_1, self.descriptors_2, 'euclidean')
+        print("CDIST DONE")
+        distances_sorted = np.argsort(distances, axis=1)
+        print("ARGSORT DONE")
+        for i, row in enumerate(tqdm(distances_sorted)):
+            match = Match(self, i, row[0:self.k])
+            if self.ratio_test(match):
+                matches.append(match)
 
+        '''
+        for i, desc in enumerate(tqdm(self.descriptors_1)):
             distances = euclidian_distance(self.descriptors_2, desc)
             distances_sorted = np.argsort(distances)
 
             match = Match(self, i, distances_sorted[0:self.k])
             if self.ratio_test(match):
-                print("Match accepted")
                 matches.append(match)
-        
+        '''
         return matches
 
 class Match:
@@ -38,14 +48,11 @@ class Match:
         desc_2 = self.my_KNN.descriptors_2[self.indices_2[ind]]
         return np.sqrt(np.sum((desc_1-desc_2)**2))
 
-
-
 # Testing
-'''
-A = np.random.rand(4, 4)
-B = np.random.rand(4, 4)
-knn_solver = KNN(A, B, 2)
-result = knn_solver.solve()
-print(len(result))
-KNN(A, B, 2)
-'''
+
+#A = np.array([[1, 0], [5, 0]])
+#B = np.array([[4, 0], [3, 0]])
+#knn_solver = KNN(A, B, 2)
+#result = knn_solver.solve()
+#print(len(result))
+#KNN(A, B, 2)

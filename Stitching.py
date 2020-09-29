@@ -3,6 +3,8 @@ import numpy as np
 from KNN import KNN
 import matplotlib.pyplot as plt
 from random import randrange
+from ShowMatches import show_corresp 
+from Homography import Homography
 
 img_right = cv2.imread('Resources/right.jpg')
 img_right = cv2.cvtColor(img_right, cv2.COLOR_BGR2RGB)
@@ -13,42 +15,38 @@ img_left = cv2.cvtColor(img_left, cv2.COLOR_BGR2RGB)
 img_l = cv2.cvtColor(img_left,cv2.COLOR_BGR2GRAY)
 
 # Create SIFT and extract features
-sift = cv2.xfeatures2d.SIFT_create()
-# find the keypoints and descriptors with SIFT
+sift = cv2.xfeatures2d.SIFT_create(nfeatures=10000)
+
+# Find the keypoints and descriptors with SIFT
 kp1, des1 = sift.detectAndCompute(img_r, None)
 kp2, des2 = sift.detectAndCompute(img_l, None)
 
-print(des1.shape)
-tmp_des1 = des1[0:10000, :]
-tmp_des2 = des2[0:10000, :]
-# BFMatcher with default params
-#bf = cv2.BFMatcher()
-knn_solver = KNN(tmp_des1, tmp_des2, 2)
+# Find KNN matches and validate with ratio test
+knn_solver = KNN(des1, des2, 2)
 matches = knn_solver.solve()
-print(len(matches))
-#matches = bf.knnMatch(des1, des2, k=2)
 
+# Extract keypoints' coordinates
+valid_kp1 = []
+valid_kp2 = []
+
+for match in matches:
+    valid_kp1.append(np.array(kp1[match.index_1].pt))
+    valid_kp2.append(np.array(kp2[match.indices_2[0]].pt))
+
+valid_kp1 = np.array(valid_kp1).T
+valid_kp2 = np.array(valid_kp2).T
+
+H = Homography(valid_kp1, valid_kp2, 5000)
+print(H)
+
+# Visualize matches
 '''
-
-# Apply ratio test
-good = []
-for m in matches:
-     if m[0].distance < 0.5*m[1].distance:         
-     	good.append(m)
-matches = np.asarray(good)
- 	 
-
+show_corresp(img_r, img_l, valid_kp1, valid_kp2, vertical=0)
+plt.show()
+'''
 # Find homography
-if len(matches[:,0]) >= 4:
-    src = np.float32([ kp1[m.queryIdx].pt for m in matches[:,0] ]).reshape(-1,1,2)
-    dst = np.float32([ kp2[m.trainIdx].pt for m in matches[:,0] ]).reshape(-1,1,2)
-
-    H, masked = cv2.findHomography(src, dst, cv2.RANSAC, 5.0)
-    print(H)
-else:
-    raise AssertionError("Can't find enough keypoints.")
-
-print("Homography found")
+#H, masked = cv2.findHomography(valid_kp1, valid_kp2, cv2.RANSAC, 5.0)
+#print("Homography: \n", H)
 
 
 # Transform and output
@@ -61,4 +59,3 @@ cv2.imwrite('resultant_stitched_panorama.jpg',dst)
 plt.imshow(dst)
 plt.show()
 cv2.imwrite('resultant_stitched_panorama.jpg',dst)
-'''
