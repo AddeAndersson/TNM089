@@ -1,0 +1,104 @@
+import numpy as np
+import cv2
+
+def hist_match(source, template):
+    oldshape = source.shape
+    source = source.ravel()
+    template = template.ravel()
+
+    # get the set of unique pixel values and their corresponding indices and
+    # counts
+    s_values, bin_idx, s_counts = np.unique(source, return_inverse=True,
+                                            return_counts=True)
+    t_values, t_counts = np.unique(template, return_counts=True)
+
+    # take the cumsum of the counts and normalize by the number of pixels to
+    # get the empirical cumulative distribution functions for the source and
+    # template images (maps pixel value --> quantile)
+    s_quantiles = np.cumsum(s_counts).astype(np.float64)
+    s_quantiles /= s_quantiles[-1]
+    t_quantiles = np.cumsum(t_counts).astype(np.float64)
+    t_quantiles /= t_quantiles[-1]
+
+    # interpolate linearly to find the pixel values in the template image
+    # that correspond most closely to the quantiles in the source image
+    interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
+
+    return interp_t_values[bin_idx].reshape(oldshape)
+
+def color_transfer(source, target, clip=True, preserve_paper=True):
+	"""
+	Transfers the color distribution from the source to the target
+	image using the mean and standard deviations of the L*a*b*
+	color space.
+	This implementation is (loosely) based on to the "Color Transfer
+	between Images" paper by Reinhard et al., 2001.
+	Parameters:
+	-------
+	source: NumPy array
+		OpenCV image in BGR color space (the source image)
+	target: NumPy array
+		OpenCV image in BGR color space (the target image)
+	clip: Should components of L*a*b* image be scaled by np.clip before 
+		converting back to BGR color space?
+		If False then components will be min-max scaled appropriately.
+		Clipping will keep target image brightness truer to the input.
+		Scaling will adjust image brightness to avoid washed out portions
+		in the resulting color transfer that can be caused by clipping.
+	preserve_paper: Should color transfer strictly follow methodology
+		layed out in original paper? The method does not always produce
+		aesthetically pleasing results.
+		If False then L*a*b* components will scaled using the reciprocal of
+		the scaling factor proposed in the paper.  This method seems to produce
+		more consistently aesthetically pleasing results 
+	Returns:
+	-------
+	transfer: NumPy array
+		OpenCV image (w, h, 3) NumPy array (uint8)
+	"""
+	# convert the images from the RGB to L*ab* color space, being
+	# sure to utilizing the floating point data type (note: OpenCV
+	# expects floats to be 32-bit, so use that instead of 64-bit)
+	source = cv2.cvtColor(source, cv2.COLOR_BGR2LAB).astype("float32")
+	target = cv2.cvtColor(target, cv2.COLOR_BGR2LAB).astype("float32")
+
+	# compute color statistics for the source and target images
+	(lMeanSrc, lStdSrc, aMeanSrc, aStdSrc, bMeanSrc, bStdSrc) = image_stats(source)
+	(lMeanTar, lStdTar, aMeanTar, aStdTar, bMeanTar, bStdTar) = image_stats(target)
+
+	# subtract the means from the target image
+	(l, a, b) = cv2.split(target)
+	l -= lMeanTar
+	a -= aMeanTar
+	b -= bMeanTar
+
+	if preserve_paper:
+		# scale by the standard deviations using paper proposed factor
+		l = (lStdTar / lStdSrc) * l
+		a = (aStdTar / aStdSrc) * a
+		b = (bStdTar / bStdSrc) * b
+	else:
+		# scale by the standard deviations using reciprocal of paper proposed factor
+		l = (lStdSrc / lStdTar) * l
+		a = (aStdSrc / aStdTar) * a
+		b = (bStdSrc / bStdTar) * b
+
+	# add in the source mean
+	l += lMeanSrc
+	a += aMeanSrc
+	b += bMeanSrc
+
+	# clip/scale the pixel intensities to [0, 255] if they fall
+	# outside this range
+	l = _scale_array(l, clip=clip)
+	a = _scale_array(a, clip=clip)
+	b = _scale_array(b, clip=clip)
+
+	# merge the channels together and convert back to the RGB color
+	# space, being sure to utilize the 8-bit unsigned integer data
+	# type
+	transfer = cv2.merge([l, a, b])
+	transfer = cv2.cvtColor(transfer.astype("uint8"), cv2.COLOR_LAB2BGR)
+	
+	# return the color transferred image
+	return transfer

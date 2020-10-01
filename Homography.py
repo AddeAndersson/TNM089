@@ -14,7 +14,7 @@ def Homography(kp1, kp2, N):
         kp1_rand = kp1[:, random_index]
         kp2_rand = kp2[:, random_index]
         
-        T = create_similiarity_mat(kp1_rand)
+        T = create_similarity_mat(kp1_rand)
 
         kp1_rand_norm = makeHomogenous(kp1_rand)
         kp2_rand_norm = makeHomogenous(kp2_rand)
@@ -86,7 +86,7 @@ def DLT(pts1, pts2):
 
     return A
 
-def create_similiarity_mat(pts):
+def create_similarity_mat(pts):
     x = pts[0, :]
     y = pts[1, :]
 
